@@ -15,7 +15,7 @@ const EARTH_TEXTURES = {
   night: '/textures/earth/night_2048.png',
   normal: '/textures/earth/normal_2048.jpg',
   specular: '/textures/earth/specular_2048.jpg',
-  clouds: '/textures/earth/clouds_2048.png'
+  clouds: '/textures/earth/clouds_2048.jpeg'
 }
 
 function useEarthTextures() {
