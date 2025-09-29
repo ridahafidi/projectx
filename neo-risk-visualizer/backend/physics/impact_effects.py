@@ -3,7 +3,7 @@
 import time
 from typing import Dict, Any, List
 from math import sqrt, pi
-from models.responses import UncertaintyBand, BlastEffect, ThermalEffect, CraterEffect, TextureEffect
+from models.responses import UncertaintyBand, BlastEffect, ThermalEffect, CraterEffect
 
 class ImpactEffectsCalculator:
     """Simple impact effects calculator without numpy dependency for quick demo"""
@@ -23,19 +23,6 @@ class ImpactEffectsCalculator:
             (500000, "3rd degree burns"),
             (1000000, "Ignition of clothing"),
             (2000000, "Ignition of dry vegetation")
-        ]
-        
-        # Material damage thresholds (pressure in PSI and thermal flux in J/m²)
-        self.TEXTURE_THRESHOLDS = [
-            # Format: (material, pressure_psi, thermal_flux_J_m2, damage_description, consequences)
-            ("glass", 0.1, 50000, "Window shattering and glass damage", "Flying glass fragments causing severe lacerations, eye injuries, and puncture wounds"),
-            ("wood", 0.5, 125000, "Wooden structure damage", "Splinter injuries, structural collapse causing crushing and blunt force trauma"),
-            ("concrete", 2.0, 200000, "Concrete cracking and spalling", "Debris projectiles causing head trauma, abrasions, and crush injuries"),
-            ("steel", 5.0, 300000, "Steel structure deformation", "Structural failure leading to crushing injuries and internal trauma"),
-            ("brick", 1.5, 150000, "Brick wall collapse", "Falling masonry causing blunt force trauma, fractures, and crushing injuries"),
-            ("asphalt", 1.0, 100000, "Road surface damage", "Debris and uneven surfaces causing falls, cuts, and vehicle accidents"),
-            ("vegetation", 0.2, 80000, "Tree damage and flying debris", "Projectile injuries from branches, leaves causing respiratory irritation"),
-            ("fabric", 0.05, 30000, "Clothing and textile damage", "Thermal burns, exposure-related injuries, loss of protective barriers")
         ]
     
     def calculate_effects(self, diameter_m: float, density_kg_m3: float, 
@@ -117,59 +104,10 @@ class ImpactEffectsCalculator:
             )
         )
         
-        # Calculate texture/material damage effects
-        texture_effects = []
-        for material, pressure_threshold, thermal_threshold, description, consequences in self.TEXTURE_THRESHOLDS:
-            # Calculate damage radius based on blast pressure
-            if pressure_threshold == 0.1:
-                k_factor = 200  # Very sensitive materials like glass
-            elif pressure_threshold <= 0.5:
-                k_factor = 120
-            elif pressure_threshold <= 1.0:
-                k_factor = 85
-            elif pressure_threshold <= 2.0:
-                k_factor = 55
-            else:
-                k_factor = 35
-            
-            # Blast damage radius
-            blast_radius_m = k_factor * (tnt_tons ** (1/3))
-            
-            # Thermal damage radius (30% of energy becomes thermal radiation)
-            thermal_energy = 0.3 * energy_j
-            thermal_radius_m = sqrt(thermal_energy / (4 * pi * thermal_threshold))
-            thermal_radius_m = min(thermal_radius_m, 500000)  # Cap at 500 km
-            
-            # Take the maximum of blast and thermal effects for each material
-            combined_radius_m = max(blast_radius_m, thermal_radius_m)
-            final_radius_km = combined_radius_m / 1000
-            
-            # Calculate damage percentage based on distance from impact
-            # Materials closer to impact have higher damage rates
-            base_damage = min(100, 100 * (1 / (1 + final_radius_km * 0.1))) if final_radius_km > 0 else 0
-            
-            texture_effects.append(TextureEffect(
-                material_type=material,
-                damage_threshold=pressure_threshold,
-                damage_percentage=UncertaintyBand(
-                    p5=base_damage * 0.7,
-                    p50=base_damage,
-                    p95=min(100, base_damage * 1.3)
-                ),
-                r_km=UncertaintyBand(
-                    p5=final_radius_km * 0.8,
-                    p50=final_radius_km,
-                    p95=final_radius_km * 1.2
-                ),
-                description=description,
-                consequences=consequences
-            ))
-        
         return {
             "blast": blast_effects,
             "thermal": thermal_effects,
             "crater": crater,
-            "texture": texture_effects,
             "calc_time_ms": int((time.time() - start_time) * 1000),
             "energy_tnt_tons": tnt_tons
         }
