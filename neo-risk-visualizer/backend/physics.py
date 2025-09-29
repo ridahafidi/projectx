@@ -11,7 +11,7 @@ import numpy as np
 import time
 from typing import Dict, Any, List
 from math import sqrt, log, pi, sin, cos, radians
-from models.responses import UncertaintyBand, BlastEffect, ThermalEffect, CraterEffect
+from models.responses import UncertaintyBand, BlastEffect, ThermalEffect, CraterEffect, TextureEffect
 from .monte_carlo import MonteCarloSimulator
 
 class ImpactEffectsCalculator:
@@ -40,6 +40,19 @@ class ImpactEffectsCalculator:
             (500000, "3rd degree burns"),    # 500 kJ/m²
             (1000000, "Ignition of clothing"), # 1 MJ/m²
             (2000000, "Ignition of dry vegetation") # 2 MJ/m²
+        ]
+        
+        # Material damage thresholds (pressure in PSI and temperature effects)
+        self.TEXTURE_THRESHOLDS = [
+            # Format: (material, pressure_psi, thermal_flux_J_m2, damage_description, consequences)
+            ("glass", 0.1, 50000, "Window shattering and glass damage", "Flying glass fragments causing severe lacerations, eye injuries, and puncture wounds"),
+            ("wood", 0.5, 125000, "Wooden structure damage", "Splinter injuries, structural collapse causing crushing and blunt force trauma"),
+            ("concrete", 2.0, 200000, "Concrete cracking and spalling", "Debris projectiles causing head trauma, abrasions, and crush injuries"),
+            ("steel", 5.0, 300000, "Steel structure deformation", "Structural failure leading to crushing injuries and internal trauma"),
+            ("brick", 1.5, 150000, "Brick wall collapse", "Falling masonry causing blunt force trauma, fractures, and crushing injuries"),
+            ("asphalt", 1.0, 100000, "Road surface damage", "Debris and uneven surfaces causing falls, cuts, and vehicle accidents"),
+            ("vegetation", 0.2, 80000, "Tree damage and flying debris", "Projectile injuries from branches, leaves causing respiratory irritation"),
+            ("fabric", 0.05, 30000, "Clothing and textile damage", "Thermal burns, exposure-related injuries, loss of protective barriers")
         ]
     
     def calculate_effects(self, diameter_m: float, density_kg_m3: float, 
@@ -90,12 +103,16 @@ class ImpactEffectsCalculator:
             ground_energies, velocity_samples, angle_samples, density_samples
         )
         
+        # Calculate texture/material damage effects
+        texture_effects = self._calculate_texture_damage(tnt_equivalent_tons, ground_energies, angle_samples)
+        
         # Package results with uncertainty bands
         effects_data = {
-            "zones": self._package_effect_zones(blast_effects, thermal_effects, crater_effects),
+            "zones": self._package_effect_zones(blast_effects, thermal_effects, crater_effects, texture_effects),
             "blast": self._format_blast_effects(blast_effects),
             "thermal": self._format_thermal_effects(thermal_effects),
             "crater": self._format_crater_effects(crater_effects),
+            "texture": self._format_texture_effects(texture_effects),
             "calc_time_ms": int((time.time() - start_time) * 1000),
             "energy_tnt_tons": {
                 "p5": float(np.percentile(tnt_equivalent_tons, 5)),
@@ -201,7 +218,58 @@ class ImpactEffectsCalculator:
             "ejecta_radius_m": ejecta_radius_m
         }
     
-    def _package_effect_zones(self, blast: Dict, thermal: Dict, crater: Dict) -> List[Dict[str, Any]]:
+    def _calculate_texture_damage(self, tnt_tons: np.ndarray, energies: np.ndarray, angles: np.ndarray) -> Dict[str, Dict]:
+        """Calculate material/texture damage effects based on pressure and thermal flux"""
+        results = {}
+        
+        for material, pressure_threshold, thermal_threshold, description, consequences in self.TEXTURE_THRESHOLDS:
+            # Calculate damage radius based on blast pressure (similar to blast effects)
+            if pressure_threshold == 0.1:
+                k_factor = 200  # Very sensitive materials like glass
+            elif pressure_threshold <= 0.5:
+                k_factor = 120
+            elif pressure_threshold <= 1.0:
+                k_factor = 85
+            elif pressure_threshold <= 2.0:
+                k_factor = 55
+            else:
+                k_factor = 35
+            
+            # Blast damage radius
+            blast_radius_m = k_factor * (tnt_tons ** (1/3))
+            
+            # Thermal damage radius (30% of energy becomes thermal radiation)
+            thermal_energy = 0.3 * energies
+            thermal_radius_m = np.sqrt(thermal_energy / (4 * pi * thermal_threshold))
+            thermal_radius_m = np.minimum(thermal_radius_m, 500000)  # Cap at 500 km
+            
+            # Take the maximum of blast and thermal effects for each material
+            combined_radius_m = np.maximum(blast_radius_m, thermal_radius_m)
+            
+            # Apply angle correction
+            angle_factor = (np.sin(angles) + 0.2)  # Materials get damaged even in grazing impacts
+            final_radius_km = (combined_radius_m * angle_factor) / 1000
+            
+            # Calculate damage percentage based on distance from impact
+            # Materials closer to impact have higher damage rates
+            base_damage = np.where(
+                final_radius_km > 0,
+                np.minimum(100, 100 * (1 / (1 + final_radius_km * 0.1))),  # Decreases with distance
+                0
+            )
+            
+            results[f"texture_{material}"] = {
+                "material_type": material,
+                "radius_km": final_radius_km,
+                "damage_threshold": pressure_threshold,
+                "damage_percentage": base_damage,
+                "description": description,
+                "consequences": consequences
+            }
+        
+        return results
+    
+    def _package_effect_zones(self, blast: Dict, thermal: Dict, crater: Dict, texture: Dict) -> List[Dict[str, Any]]:
         """Package effect zones for population analysis"""
         zones = []
         
@@ -221,6 +289,17 @@ class ImpactEffectsCalculator:
                 "threshold": data["flux_J_m2"],
                 "radius_km_samples": data["radius_km"],
                 "description": data["description"]
+            })
+        
+        # Add texture damage zones
+        for key, data in texture.items():
+            zones.append({
+                "type": "texture",
+                "material": data["material_type"],
+                "threshold": data["damage_threshold"],
+                "radius_km_samples": data["radius_km"],
+                "description": data["description"],
+                "consequences": data["consequences"]
             })
         
         # Add crater zone
@@ -288,6 +367,30 @@ class ImpactEffectsCalculator:
                 p95=float(np.percentile(ejecta_samples, 95))
             )
         )
+    
+    def _format_texture_effects(self, texture_data: Dict) -> List[TextureEffect]:
+        """Format texture/material damage effects for API response"""
+        effects = []
+        for key, data in texture_data.items():
+            radius_samples = data["radius_km"]
+            damage_samples = data["damage_percentage"]
+            effects.append(TextureEffect(
+                material_type=data["material_type"],
+                damage_threshold=data["damage_threshold"],
+                damage_percentage=UncertaintyBand(
+                    p5=float(np.percentile(damage_samples, 5)),
+                    p50=float(np.percentile(damage_samples, 50)),
+                    p95=float(np.percentile(damage_samples, 95))
+                ),
+                r_km=UncertaintyBand(
+                    p5=float(np.percentile(radius_samples, 5)),
+                    p50=float(np.percentile(radius_samples, 50)),
+                    p95=float(np.percentile(radius_samples, 95))
+                ),
+                description=data["description"],
+                consequences=data["consequences"]
+            ))
+        return effects
 
 
 # physics/monte_carlo.py

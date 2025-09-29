@@ -121,6 +121,15 @@ const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationCompl
       // Get total affected population
       const totalAffected = exposure.total_affected?.p50 || 0
       
+      // Extract texture effects
+      const textureEffects = effects.texture?.map(effect => ({
+        material_type: effect.material_type,
+        damage_percentage: effect.damage_percentage?.p50 || 0,
+        radius_km: effect.r_km?.p50 || 0,
+        description: effect.description,
+        consequences: effect.consequences
+      })) || []
+      
       // Format results
       const results = {
         energy: `${energyTJ} TJ`,
@@ -128,6 +137,9 @@ const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationCompl
         blastRadius: `${heavyDamage.toFixed(1)} km`,
         thermalRadius: `${thermalBurns.toFixed(1)} km`,
         populationAffected: totalAffected > 1000000 ? `~${Math.round(totalAffected / 1000000)}M` : `~${Math.round(totalAffected / 1000)}k`,
+        
+        // Include texture effects
+        textureEffects: textureEffects,
         
         // Additional details for expanded view
         details: {
