@@ -1,0 +1,71 @@
+# Docker Compose for Impactor-2025 Development Environment
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - NASA_API_KEY=${NASA_API_KEY:-demo_key}
+      - ENVIRONMENT=development
+    volumes:
+      # Mount source code for development hot-reload
+      - ./backend:/app
+      - /app/__pycache__
+    networks:
+      - impactor-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Frontend Web Service  
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN:-demo_token}
+    volumes:
+      # Mount source code for development hot-reload
+      - ./web:/app
+      - /app/node_modules
+    networks:
+      - impactor-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - impactor-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+networks:
+  impactor-network:
+    driver: bridge
+    name: impactor-network
+
+volumes:
+  redis_data:
+    driver: local

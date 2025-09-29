@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head><title>Location Test</title></head>
+<body>
+<div id="debug">selectedLocation: NULL</div>
+<button onclick="selectLocation()">NYC</button>
+<button onclick="simulate()" id="simBtn">SIMULATE</button>
+<div id="results"></div>
+
+<script>
+let selectedLocation = null;
+
+function selectLocation() {
+  selectedLocation = {lat: 40.7128, lon: -74.0060};
+  document.getElementById("debug").innerHTML = "selectedLocation: SET - " + JSON.stringify(selectedLocation);
+  document.getElementById("simBtn").disabled = false;
+}
+
+function simulate() {
+  if (!selectedLocation) {
+    alert("No location selected");
+    return;
+  }
+  
+  fetch("http://localhost:8000/simulate", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      lat: selectedLocation.lat,
+      lon: selectedLocation.lon,
+      diameter_m: 100,
+      density_kg_m3: 2500,
+      velocity_km_s: 20,
+      angle_deg: 45
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log("API Response:", data);
+    document.getElementById("results").innerHTML = "Energy: " + (data.effects ? "API Works!" : "Error");
+  })
+  .catch(e => {
+    console.error("Error:", e);
+    document.getElementById("results").innerHTML = "Error: " + e.message;
+  });
+}
+
+document.getElementById("simBtn").disabled = true;
+</script>
+</body>
+</html>
