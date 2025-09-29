@@ -141,6 +141,14 @@ async def simulate_impact(request: SimulationRequest):
                     "threshold": effect.J_m2,
                     "radius_km_samples": effect.r_km.p50
                 })
+        if "texture" in effects:
+            for effect in effects["texture"]:
+                zones.append({
+                    "type": "texture",
+                    "material": effect.material_type,
+                    "threshold": effect.damage_threshold,
+                    "radius_km_samples": effect.r_km.p50
+                })
         
         # Calculate population exposure within effect zones
         exposure = await population_analyzer.calculate_exposure(
