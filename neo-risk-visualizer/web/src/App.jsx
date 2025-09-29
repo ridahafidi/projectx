@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { AlertTriangle, Zap, Shield, Info, Github, ExternalLink } from 'lucide-react'
+import CinematicViewport from './components/CinematicViewport'
+import useSimulationFlow, { PHASES } from './store/useSimulationFlow'
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -49,96 +51,6 @@ class ErrorBoundary extends React.Component {
 // import InfoTooltip from './components/Common/InfoTooltip'
 
 // Temporary placeholder components
-const ImpactMap = ({ simulationData, mitigationData, onLocationSelect, selectedLocation }) => (
-  <div className="w-full h-full relative overflow-hidden space-bg">
-    <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-black/40"></div>
-    
-    {/* Map Placeholder with Earth visualization */}
-    <div className="w-full h-full flex items-center justify-center relative z-10">
-      <div className="text-center space-y-6 glass p-8 rounded-2xl max-w-md mx-4">
-        <div className="relative">
-          <div className="text-8xl animate-float mb-4 filter drop-shadow-lg">🌍</div>
-          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2">
-            <div className="text-2xl animate-pulse-slow">☄️</div>
-          </div>
-        </div>
-        
-        <div className="space-y-2">
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent">
-            Interactive Earth Map
-          </h3>
-          <p className="text-gray-300">Click anywhere to set impact location</p>
-          <p className="text-sm text-gray-400">Mapbox 3D visualization ready for integration</p>
-        </div>
-        
-        {selectedLocation && (
-          <div className="space-panel-dark p-4 border border-blue-500/50">
-            <div className="text-sm text-blue-300 font-medium mb-2">📍 Target Coordinates</div>
-            <div className="font-mono text-white">
-              Lat: {selectedLocation.lat.toFixed(4)}°<br/>
-              Lon: {selectedLocation.lon.toFixed(4)}°
-            </div>
-          </div>
-        )}
-        
-        {simulationData && (
-          <div className="space-panel-dark p-4 border-l-4 border-red-500 animate-pulse">
-            <div className="text-red-300 font-medium">⚠️ Impact Simulated</div>
-            <div className="text-xs text-gray-400 mt-1">
-              Effect zones would be visualized on real map
-            </div>
-          </div>
-        )}
-        
-        <div className="space-y-3">
-          <div className="text-sm text-gray-400">Quick Locations:</div>
-          <div className="grid grid-cols-2 gap-2">
-            <button 
-              className="btn-primary text-xs py-2"
-              onClick={() => onLocationSelect({ lat: 40.7128, lon: -74.0060 })}
-            >
-              � NYC
-            </button>
-            <button 
-              className="btn-primary text-xs py-2"
-              onClick={() => onLocationSelect({ lat: 51.5074, lon: -0.1278 })}
-            >
-              🇬🇧 London
-            </button>
-            <button 
-              className="btn-primary text-xs py-2"
-              onClick={() => onLocationSelect({ lat: 35.6762, lon: 139.6503 })}
-            >
-              🗾 Tokyo
-            </button>
-            <button 
-              className="btn-primary text-xs py-2"
-              onClick={() => onLocationSelect({ lat: 0, lon: 0 })}
-            >
-              🌊 Ocean
-            </button>
-          </div>
-          
-          <div className="mt-3 p-3 bg-blue-900/30 rounded-lg border border-blue-500/30">
-            <div className="text-xs text-blue-300 mb-2">💡 Pro Tip</div>
-            <div className="text-xs text-gray-400">
-              Click any location above to select an impact target, then use the simulation panel to configure your asteroid parameters.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    {/* Floating particles/stars */}
-    <div className="absolute inset-0 pointer-events-none">
-      <div className="absolute top-10 left-10 w-1 h-1 bg-white rounded-full animate-pulse opacity-60"></div>
-      <div className="absolute top-20 right-20 w-1 h-1 bg-blue-300 rounded-full animate-pulse opacity-40"></div>
-      <div className="absolute bottom-20 left-20 w-1 h-1 bg-purple-300 rounded-full animate-pulse opacity-50"></div>
-      <div className="absolute bottom-10 right-10 w-1 h-1 bg-white rounded-full animate-pulse opacity-70"></div>
-      <div className="absolute top-1/2 left-1/4 w-1 h-1 bg-yellow-300 rounded-full animate-pulse opacity-30"></div>
-    </div>
-  </div>
-)
 
 const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationComplete, onError }) => {
   const [parameters, setParameters] = React.useState({
@@ -149,9 +61,11 @@ const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationCompl
   })
   
   const [isLoading, setIsLoading] = React.useState(false)
+  const lat = selectedLocation ? (selectedLocation.lat ?? selectedLocation.latitude) : null
+  const lon = selectedLocation ? (selectedLocation.lon ?? selectedLocation.longitude) : null
 
   const handleSimulation = async () => {
-    if (!selectedLocation) {
+    if (!selectedLocation || lat === null || lon === null) {
       onError("Please select a target location on the map first")
       return
     }
@@ -162,8 +76,8 @@ const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationCompl
     try {
       // Prepare API request
       const requestData = {
-        lat: selectedLocation.lat,
-        lon: selectedLocation.lon,
+        lat,
+        lon,
         diameter_m: parameters.diameter,
         density_kg_m3: parameters.density,
         velocity_km_s: parameters.velocity,
@@ -308,11 +222,11 @@ const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationCompl
           />
         </div>
         
-        {selectedLocation && (
+        {selectedLocation && lat !== null && lon !== null && (
           <div className="space-panel-dark p-3 border-l-4 border-warning">
             <div className="text-xs text-gray-400">Impact Location</div>
             <div className="text-sm font-mono text-white">
-              {selectedLocation.lat.toFixed(4)}°, {selectedLocation.lon.toFixed(4)}°
+              {lat.toFixed(4)}°, {lon.toFixed(4)}°
             </div>
           </div>
         )}
@@ -320,7 +234,7 @@ const ParameterPanel = ({ selectedLocation, onSimulationStart, onSimulationCompl
         <button 
           className={`btn-warning w-full text-lg font-bold glow-warning ${isLoading ? 'opacity-50 cursor-not-allowed' : 'animate-float'}`}
           onClick={handleSimulation}
-          disabled={isLoading || !selectedLocation}
+          disabled={isLoading || lat === null || lon === null}
         >
           {isLoading ? '⏳ CALCULATING...' : '🚀 SIMULATE IMPACT'}
         </button>
@@ -518,17 +432,23 @@ const InfoTooltip = ({ content, children }) => (
 
 function App() {
   const [activeTab, setActiveTab] = useState('simulation')
-  const [simulationData, setSimulationData] = useState(null)
   const [mitigationData, setMitigationData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedLocation, setSelectedLocation] = useState(null)
+  const activeLocation = useSimulationFlow((state) => state.activeLocation)
+  const targetLocation = useSimulationFlow((state) => state.targetLocation)
+  const simulationData = useSimulationFlow((state) => state.simulationResult)
+  const setSimulationResult = useSimulationFlow((state) => state.setSimulationResult)
+  const phase = useSimulationFlow((state) => state.phase)
+
+  const selectedLocation = activeLocation ?? targetLocation
 
   const handleSimulationComplete = useCallback((data) => {
-    setSimulationData(data)
+    setSimulationResult(data)
     setError(null)
     setIsLoading(false)
-  }, [])
+    setMitigationData(null)
+  }, [setSimulationResult])
 
   const handleMitigationComplete = useCallback((data) => {
     setMitigationData(data)
@@ -539,15 +459,25 @@ function App() {
     setIsLoading(false)
   }, [])
 
-  const handleLocationSelect = useCallback((location) => {
-    try {
-      console.log('Setting location:', location)
-      setSelectedLocation(location)
-      console.log('Location set successfully')
-    } catch (error) {
-      console.error('Error setting location:', error)
-    }
+  const handleViewportLocationSelect = useCallback(() => {
+    setError(null)
+    setMitigationData(null)
+    setActiveTab('simulation')
   }, [])
+
+  React.useEffect(() => {
+    if (!selectedLocation) {
+      setMitigationData(null)
+    }
+  }, [selectedLocation])
+
+  React.useEffect(() => {
+    if (phase === PHASES.SPACE_IDLE) {
+      setIsLoading(false)
+      setError(null)
+      setMitigationData(null)
+    }
+  }, [phase])
 
   return (
     <div className="min-h-screen bg-space-gradient overflow-hidden">
@@ -674,11 +604,10 @@ function App() {
 
         {/* Right Panel - Map */}
         <div className="flex-1 relative">
-          <ImpactMap
+          <CinematicViewport
             simulationData={simulationData}
             mitigationData={mitigationData}
-            onLocationSelect={handleLocationSelect}
-            selectedLocation={selectedLocation}
+            onLocationSelect={handleViewportLocationSelect}
           />
           
           {error && (
