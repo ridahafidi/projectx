@@ -14,7 +14,7 @@ function DamageSummary({ simulationData }) {
     )
   }
 
-  const { energy, craterDiameter, blastRadius, thermalRadius, populationAffected, details, textureEffects } = simulationData
+  const { energy, craterDiameter, blastRadius, thermalRadius, populationAffected, details } = simulationData
 
   const metrics = [
     { label: 'Impact Energy', value: energy, accent: 'text-amber-300' },
@@ -40,31 +40,6 @@ function DamageSummary({ simulationData }) {
         <p>3rd Degree Burns: <span className="text-orange-300 font-semibold">{details?.thermalBurns ?? thermalRadius}</span></p>
         <p>Window Breakage: <span className="text-sky-300 font-semibold">{details?.windowBreakage ?? 'n/a'}</span></p>
       </div>
-      
-      {/* Texture Damage Section */}
-      {textureEffects && textureEffects.length > 0 && (
-        <div className="mt-6 border-t border-slate-700/50 pt-4">
-          <h4 className="text-xs uppercase tracking-widest text-sky-300 mb-3">Material Damage & Consequences</h4>
-          <div className="space-y-2 max-h-32 overflow-y-auto">
-            {textureEffects.slice(0, 4).map((effect, index) => (
-              <div key={effect.material_type} className="bg-black/20 border border-white/5 rounded-xl px-3 py-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-medium text-white capitalize">{effect.material_type}</span>
-                  <span className="text-xs text-cyan-300">{Math.round(effect.damage_percentage || 0)}% damaged</span>
-                </div>
-                <p className="text-[0.6rem] text-slate-400 mt-1 leading-tight">
-                  {effect.consequences.slice(0, 80)}...
-                </p>
-              </div>
-            ))}
-          </div>
-          {textureEffects.length > 4 && (
-            <p className="text-xs text-slate-500 mt-2 text-center">
-              +{textureEffects.length - 4} more materials affected
-            </p>
-          )}
-        </div>
-      )}
     </div>
   )
 }

@@ -33,15 +33,6 @@ class CraterEffect(BaseModel):
     depth_m: UncertaintyBand = Field(..., description="Crater depth in meters with uncertainty")
     ejecta_r_km: UncertaintyBand = Field(..., description="Ejecta blanket radius in km")
 
-class TextureEffect(BaseModel):
-    """Material/texture damage effect zone"""
-    material_type: str = Field(..., description="Material type (concrete, steel, wood, glass, etc.)")
-    damage_threshold: float = Field(..., description="Damage threshold (pressure, temperature, or energy)")
-    damage_percentage: UncertaintyBand = Field(..., description="Damage percentage with uncertainty")
-    r_km: UncertaintyBand = Field(..., description="Radius in km with uncertainty")
-    description: str = Field(..., description="Human-readable damage description")
-    consequences: str = Field(..., description="Physical consequences and flesh effects")
-
 class PopulationExposure(BaseModel):
     """Population exposure estimate"""
     threshold: str = Field(..., description="Effect threshold (e.g., 'psi>=5')")
@@ -52,7 +43,6 @@ class EffectsData(BaseModel):
     blast: List[BlastEffect] = Field(..., description="Blast effect zones")
     thermal: List[ThermalEffect] = Field(..., description="Thermal effect zones")
     crater: CraterEffect = Field(..., description="Crater parameters")
-    texture: List[TextureEffect] = Field(..., description="Material/texture damage zones")
 
 class ExposureData(BaseModel):
     """Population exposure data"""

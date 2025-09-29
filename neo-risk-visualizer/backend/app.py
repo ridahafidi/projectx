@@ -36,7 +36,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -139,14 +139,6 @@ async def simulate_impact(request: SimulationRequest):
                 zones.append({
                     "type": "thermal", 
                     "threshold": effect.J_m2,
-                    "radius_km_samples": effect.r_km.p50
-                })
-        if "texture" in effects:
-            for effect in effects["texture"]:
-                zones.append({
-                    "type": "texture",
-                    "material": effect.material_type,
-                    "threshold": effect.damage_threshold,
                     "radius_km_samples": effect.r_km.p50
                 })
         
