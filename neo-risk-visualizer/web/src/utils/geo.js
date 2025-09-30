@@ -3,12 +3,15 @@ import * as THREE from 'three'
 const DEG2RAD = Math.PI / 180
 
 export function latLonToCartesian(lat, lon, radius = 1) {
-  const phi = (90 - lat) * DEG2RAD
-  const theta = (lon + 180) * DEG2RAD
+  // Convert latitude and longitude to radians
+  const latRad = lat * DEG2RAD
+  const lonRad = lon * DEG2RAD
 
-  const x = -radius * Math.sin(phi) * Math.cos(theta)
-  const z = radius * Math.sin(phi) * Math.sin(theta)
-  const y = radius * Math.cos(phi)
+  // Standard spherical to cartesian conversion
+  // Note: Three.js uses Y-up coordinate system
+  const x = radius * Math.cos(latRad) * Math.cos(lonRad)
+  const y = radius * Math.sin(latRad)
+  const z = -radius * Math.cos(latRad) * Math.sin(lonRad)
 
   return new THREE.Vector3(x, y, z)
 }

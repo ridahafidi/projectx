@@ -138,10 +138,14 @@ function EarthController({ earthRef }) {
     if (!earthRef.current) return
 
     if (aligning.current) {
+      // Faster, smoother rotation animation
+      const rotationSpeed = Math.min(delta * 2.5, 0.1) // Adaptive speed with cap
       tempQuaternion.current.copy(earthRef.current.quaternion)
-      tempQuaternion.current.slerp(rotationTarget.current, 1 - Math.pow(0.0001, delta))
+      tempQuaternion.current.slerp(rotationTarget.current, rotationSpeed)
       earthRef.current.quaternion.copy(tempQuaternion.current)
-      if (earthRef.current.quaternion.angleTo(rotationTarget.current) < 0.01) {
+      
+      // Check if rotation is close enough to target
+      if (earthRef.current.quaternion.angleTo(rotationTarget.current) < 0.05) {
         earthRef.current.quaternion.copy(rotationTarget.current)
         aligning.current = false
         confirmAlignment()
@@ -150,8 +154,10 @@ function EarthController({ earthRef }) {
       earthRef.current.rotation.y += delta * 0.12
       earthRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.07) * 0.08
     } else if (phase === PHASES.RESETTING) {
+      // Faster reset animation
+      const resetSpeed = Math.min(delta * 3.0, 0.15)
       tempQuaternion.current.copy(earthRef.current.quaternion)
-      tempQuaternion.current.slerp(identityQuaternion.current, 1 - Math.pow(0.0001, delta))
+      tempQuaternion.current.slerp(identityQuaternion.current, resetSpeed)
       earthRef.current.quaternion.copy(tempQuaternion.current)
     }
   })
@@ -191,24 +197,35 @@ function CameraRig() {
     }
 
     if (phase === PHASES.TRANSITION_TO_SURFACE && activeLocation) {
-      camera.position.lerp(targetCameraPosition.current, 1 - Math.pow(0.0001, delta))
+      // Smoother, faster camera transition with easing
+      const transitionSpeed = Math.min(delta * 4.0, 0.2) // Much faster transition
+      camera.position.lerp(targetCameraPosition.current, transitionSpeed)
+      
+      // Smooth lookAt transition
       const focusPoint = latLonToCartesian(activeLocation.latitude, activeLocation.longitude, EARTH_RADIUS * 0.9)
       camera.lookAt(focusPoint.x, focusPoint.y, focusPoint.z)
 
-      if (camera.position.distanceTo(targetCameraPosition.current) < 0.02) {
+      // More generous completion threshold
+      if (camera.position.distanceTo(targetCameraPosition.current) < 0.1) {
         enterSurfaceView()
       }
     } else if (phase === PHASES.SPACE_IDLE || phase === PHASES.ALIGNING) {
-      camera.position.lerp(defaultPosition, Math.min(1, delta * 0.8))
+      // Consistent speed for return to default position
+      const returnSpeed = Math.min(delta * 2.0, 0.1)
+      camera.position.lerp(defaultPosition, returnSpeed)
       camera.lookAt(lookAtOrigin)
     } else if (phase === PHASES.RESETTING) {
-      camera.position.lerp(defaultPosition, Math.min(1, delta * 0.6))
+      // Fast reset animation
+      const resetSpeed = Math.min(delta * 3.0, 0.15)
+      camera.position.lerp(defaultPosition, resetSpeed)
       camera.lookAt(lookAtOrigin)
-      if (camera.position.distanceTo(defaultPosition) < 0.03) {
+      if (camera.position.distanceTo(defaultPosition) < 0.1) {
         completeReset()
       }
     } else if (!targetLocation && phase !== PHASES.TRANSITION_TO_SURFACE) {
-      camera.position.lerp(defaultPosition, Math.min(1, delta * 0.5))
+      // Fallback smooth return
+      const fallbackSpeed = Math.min(delta * 1.5, 0.08)
+      camera.position.lerp(defaultPosition, fallbackSpeed)
       camera.lookAt(lookAtOrigin)
     }
   })
@@ -244,16 +261,17 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
     groupRef.current.quaternion.copy(quaternion)
   }, [positionVector])
 
-  // Throttle visibility calculations for better performance
+  // Smooth time-based animations instead of frame-based throttling
   useFrame((state) => {
-    const frameCount = Math.floor(state.clock.elapsedTime * 60) // 60fps
-    
     if (haloRef.current) {
       haloRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.05)
     }
 
-    // Only check visibility every 5th frame to reduce CPU load
-    if (frameCount % 5 === 0 && groupRef.current) {
+    // Time-based visibility checks (every 100ms) for smoother animation
+    const currentTime = state.clock.elapsedTime
+    const shouldCheckVisibility = Math.floor(currentTime * 10) !== Math.floor((currentTime - state.clock.getDelta()) * 10)
+    
+    if (shouldCheckVisibility && groupRef.current) {
       cameraVector.current.copy(camera.position).normalize()
       groupRef.current.getWorldPosition(surfaceVector.current)
       surfaceVector.current.normalize()
@@ -264,10 +282,16 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
       }
     }
 
-    if (labelRef.current && frameCount % 3 === 0) {
-      labelRef.current.style.opacity = isVisible ? '1' : '0'
-      labelRef.current.style.transform = isVisible ? 'scale(1)' : 'scale(0.95)'
-      labelRef.current.style.pointerEvents = isVisible ? 'auto' : 'none'
+    // Smooth label transitions using CSS instead of frequent DOM updates
+    if (labelRef.current) {
+      const targetOpacity = isVisible ? '1' : '0'
+      const targetScale = isVisible ? 'scale(1)' : 'scale(0.95)'
+      
+      if (labelRef.current.style.opacity !== targetOpacity) {
+        labelRef.current.style.opacity = targetOpacity
+        labelRef.current.style.transform = targetScale
+        labelRef.current.style.pointerEvents = isVisible ? 'auto' : 'none'
+      }
     }
   })
 
@@ -296,7 +320,11 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
       <Html
         position={[0, 0, radialLabelDistance]}
         distanceFactor={8}
-        style={{ pointerEvents: 'auto', transition: 'opacity 0.3s ease, transform 0.3s ease' }}
+        style={{ 
+          pointerEvents: 'auto', 
+          transition: 'opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+          willChange: 'opacity, transform'
+        }}
         ref={labelRef}
       >
         <button
@@ -419,12 +447,15 @@ function SpaceScene({ onLocationSelect }) {
         shadows 
         camera={{ position: [0, 1.8, 5.2], fov: 45 }}
         gl={{ 
-          antialias: false,  // Disable expensive antialiasing 
+          antialias: true,   // Enable antialiasing for smoother animations
           alpha: false,      // Disable alpha channel
           powerPreference: "high-performance",
-          pixelRatio: Math.min(window.devicePixelRatio, 2) // Limit pixel ratio
+          pixelRatio: Math.min(window.devicePixelRatio, 2), // Limit pixel ratio
+          preserveDrawingBuffer: false, // Better performance during animations
+          failIfMajorPerformanceCaveat: false
         }}
-        performance={{ min: 0.2 }} // Allow lower framerates if needed
+        performance={{ min: 0.5 }} // Higher minimum framerate for smoother animations
+        frameloop="always" // Ensure continuous rendering during animations
       >
         <color attach="background" args={["#040511"]} />
         <fog attach="fog" args={["#040511", 14, 26]} />

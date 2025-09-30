@@ -477,6 +477,32 @@ function App() {
     setActiveTab('simulation')
   }, [])
 
+  const handleRunSimulation = useCallback(async (parameters) => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      // Make API call to backend
+      const response = await fetch('http://localhost:8000/simulate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(parameters)
+      })
+
+      if (!response.ok) {
+        throw new Error(`Simulation failed: ${response.status} ${response.statusText}`)
+      }
+
+      const results = await response.json()
+      handleSimulationComplete(results)
+    } catch (error) {
+      console.error('Simulation failed:', error)
+      handleError(error)
+    }
+  }, [handleSimulationComplete, handleError])
+
   React.useEffect(() => {
     if (!selectedLocation) {
       setMitigationData(null)
@@ -620,6 +646,8 @@ function App() {
             simulationData={simulationData}
             mitigationData={mitigationData}
             onLocationSelect={handleViewportLocationSelect}
+            onRunSimulation={handleRunSimulation}
+            isLoading={isLoading}
           />
           
           {error && (
