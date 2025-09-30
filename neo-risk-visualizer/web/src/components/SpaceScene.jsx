@@ -25,11 +25,26 @@ function useEarthTextures() {
   )
 
   return useMemo(() => {
+    // Optimize texture settings for performance
     dayTexture.colorSpace = THREE.SRGBColorSpace
+    dayTexture.generateMipmaps = true
+    dayTexture.minFilter = THREE.LinearMipmapLinearFilter
+    dayTexture.magFilter = THREE.LinearFilter
+    
     nightTexture.colorSpace = THREE.SRGBColorSpace
+    nightTexture.generateMipmaps = true
+    nightTexture.minFilter = THREE.LinearMipmapLinearFilter
+    
     cloudTexture.colorSpace = THREE.SRGBColorSpace
-  normalTexture.colorSpace = THREE.LinearSRGBColorSpace
-  specularTexture.colorSpace = THREE.LinearSRGBColorSpace
+    cloudTexture.generateMipmaps = true
+    cloudTexture.minFilter = THREE.LinearMipmapLinearFilter
+    
+    normalTexture.colorSpace = THREE.LinearSRGBColorSpace
+    normalTexture.generateMipmaps = true
+    
+    specularTexture.colorSpace = THREE.LinearSRGBColorSpace
+    specularTexture.generateMipmaps = true
+    
     return { dayTexture, nightTexture, normalTexture, specularTexture, cloudTexture }
   }, [dayTexture, nightTexture, normalTexture, specularTexture, cloudTexture])
 }
@@ -37,10 +52,12 @@ function useEarthTextures() {
 function EarthGlobe() {
   const { dayTexture, nightTexture, normalTexture, specularTexture } = useEarthTextures()
 
+  // Memoize geometry to prevent recreation
+  const geometry = useMemo(() => new THREE.SphereGeometry(EARTH_RADIUS, 32, 32), [])
+  
   return (
     <group>
-      <mesh castShadow receiveShadow>
-        <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
+      <mesh castShadow receiveShadow geometry={geometry}>
         <meshStandardMaterial
           map={dayTexture}
           normalMap={normalTexture}
@@ -59,25 +76,35 @@ function EarthGlobe() {
 function CloudLayer() {
   const { cloudTexture } = useEarthTextures()
 
+  // Reduced geometry complexity and optimized material
+  const geometry = useMemo(() => new THREE.SphereGeometry(CLOUD_RADIUS, 24, 24), [])
+  
   return (
-    <mesh rotation={[0, 0, 0]}>
-      <sphereGeometry args={[CLOUD_RADIUS, 64, 64]} />
-      <meshPhongMaterial
+    <mesh rotation={[0, 0, 0]} geometry={geometry}>
+      <meshBasicMaterial
         map={cloudTexture}
         transparent
         opacity={0.45}
         depthWrite={false}
-        side={THREE.DoubleSide}
+        alphaTest={0.1}
       />
     </mesh>
   )
 }
 
 function Atmosphere() {
+  // Much simpler geometry for atmosphere glow
+  const geometry = useMemo(() => new THREE.SphereGeometry(ATMOSPHERE_RADIUS, 16, 16), [])
+  
   return (
-    <mesh>
-      <sphereGeometry args={[ATMOSPHERE_RADIUS, 64, 64]} />
-      <meshBasicMaterial color="#4fb6ff" transparent opacity={0.18} side={THREE.BackSide} />
+    <mesh geometry={geometry}>
+      <meshBasicMaterial 
+        color="#4fb6ff" 
+        transparent 
+        opacity={0.18} 
+        side={THREE.BackSide}
+        depthWrite={false}
+      />
     </mesh>
   )
 }
@@ -206,6 +233,10 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
   const surfaceVector = useRef(new THREE.Vector3())
   const cameraVector = useRef(new THREE.Vector3())
 
+  // Memoize geometries to prevent recreation
+  const sphereGeometry = useMemo(() => new THREE.SphereGeometry(0.02, 8, 8), [])
+  const ringGeometry = useMemo(() => new THREE.RingGeometry(0.03, 0.055, 16), [])
+
   useEffect(() => {
     if (!groupRef.current) return
     const outward = positionVector.clone().normalize()
@@ -213,12 +244,16 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
     groupRef.current.quaternion.copy(quaternion)
   }, [positionVector])
 
+  // Throttle visibility calculations for better performance
   useFrame((state) => {
+    const frameCount = Math.floor(state.clock.elapsedTime * 60) // 60fps
+    
     if (haloRef.current) {
       haloRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.05)
     }
 
-    if (groupRef.current) {
+    // Only check visibility every 5th frame to reduce CPU load
+    if (frameCount % 5 === 0 && groupRef.current) {
       cameraVector.current.copy(camera.position).normalize()
       groupRef.current.getWorldPosition(surfaceVector.current)
       surfaceVector.current.normalize()
@@ -229,7 +264,7 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
       }
     }
 
-    if (labelRef.current) {
+    if (labelRef.current && frameCount % 3 === 0) {
       labelRef.current.style.opacity = isVisible ? '1' : '0'
       labelRef.current.style.transform = isVisible ? 'scale(1)' : 'scale(0.95)'
       labelRef.current.style.pointerEvents = isVisible ? 'auto' : 'none'
@@ -238,17 +273,16 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
 
   return (
     <group ref={groupRef} position={positionVector}>
-      <mesh>
-        <sphereGeometry args={[0.02, 16, 16]} />
+      <mesh geometry={sphereGeometry}>
         <meshStandardMaterial color={isActive ? '#ff7a45' : isTarget ? '#4f9cff' : '#f5f5f5'} emissive="#2c3f6c" emissiveIntensity={0.5} />
       </mesh>
-      <mesh ref={haloRef}>
-        <ringGeometry args={[0.03, 0.055, 32]} />
+      <mesh ref={haloRef} geometry={ringGeometry}>
         <meshBasicMaterial
           color={isActive ? '#ffb26f' : '#4f9cff'}
           transparent
           opacity={isActive ? 0.75 : 0.45}
           side={THREE.DoubleSide}
+          depthWrite={false}
         />
       </mesh>
       <Line
@@ -381,7 +415,17 @@ function SpaceScene({ onLocationSelect }) {
 
   return (
     <div className="relative w-full h-full">
-      <Canvas shadows camera={{ position: [0, 1.8, 5.2], fov: 45 }}>
+      <Canvas 
+        shadows 
+        camera={{ position: [0, 1.8, 5.2], fov: 45 }}
+        gl={{ 
+          antialias: false,  // Disable expensive antialiasing 
+          alpha: false,      // Disable alpha channel
+          powerPreference: "high-performance",
+          pixelRatio: Math.min(window.devicePixelRatio, 2) // Limit pixel ratio
+        }}
+        performance={{ min: 0.2 }} // Allow lower framerates if needed
+      >
         <color attach="background" args={["#040511"]} />
         <fog attach="fog" args={["#040511", 14, 26]} />
         <Suspense fallback={null}>
