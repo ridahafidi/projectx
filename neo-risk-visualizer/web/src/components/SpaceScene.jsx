@@ -25,11 +25,26 @@ function useEarthTextures() {
   )
 
   return useMemo(() => {
+    // Optimize texture settings for performance
     dayTexture.colorSpace = THREE.SRGBColorSpace
+    dayTexture.generateMipmaps = true
+    dayTexture.minFilter = THREE.LinearMipmapLinearFilter
+    dayTexture.magFilter = THREE.LinearFilter
+    
     nightTexture.colorSpace = THREE.SRGBColorSpace
+    nightTexture.generateMipmaps = true
+    nightTexture.minFilter = THREE.LinearMipmapLinearFilter
+    
     cloudTexture.colorSpace = THREE.SRGBColorSpace
-  normalTexture.colorSpace = THREE.LinearSRGBColorSpace
-  specularTexture.colorSpace = THREE.LinearSRGBColorSpace
+    cloudTexture.generateMipmaps = true
+    cloudTexture.minFilter = THREE.LinearMipmapLinearFilter
+    
+    normalTexture.colorSpace = THREE.LinearSRGBColorSpace
+    normalTexture.generateMipmaps = true
+    
+    specularTexture.colorSpace = THREE.LinearSRGBColorSpace
+    specularTexture.generateMipmaps = true
+    
     return { dayTexture, nightTexture, normalTexture, specularTexture, cloudTexture }
   }, [dayTexture, nightTexture, normalTexture, specularTexture, cloudTexture])
 }
@@ -37,10 +52,12 @@ function useEarthTextures() {
 function EarthGlobe() {
   const { dayTexture, nightTexture, normalTexture, specularTexture } = useEarthTextures()
 
+  // Memoize geometry to prevent recreation
+  const geometry = useMemo(() => new THREE.SphereGeometry(EARTH_RADIUS, 32, 32), [])
+  
   return (
     <group>
-      <mesh castShadow receiveShadow>
-        <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
+      <mesh castShadow receiveShadow geometry={geometry}>
         <meshStandardMaterial
           map={dayTexture}
           normalMap={normalTexture}
@@ -59,25 +76,35 @@ function EarthGlobe() {
 function CloudLayer() {
   const { cloudTexture } = useEarthTextures()
 
+  // Reduced geometry complexity and optimized material
+  const geometry = useMemo(() => new THREE.SphereGeometry(CLOUD_RADIUS, 24, 24), [])
+  
   return (
-    <mesh rotation={[0, 0, 0]}>
-      <sphereGeometry args={[CLOUD_RADIUS, 64, 64]} />
-      <meshPhongMaterial
+    <mesh rotation={[0, 0, 0]} geometry={geometry}>
+      <meshBasicMaterial
         map={cloudTexture}
         transparent
         opacity={0.45}
         depthWrite={false}
-        side={THREE.DoubleSide}
+        alphaTest={0.1}
       />
     </mesh>
   )
 }
 
 function Atmosphere() {
+  // Much simpler geometry for atmosphere glow
+  const geometry = useMemo(() => new THREE.SphereGeometry(ATMOSPHERE_RADIUS, 16, 16), [])
+  
   return (
-    <mesh>
-      <sphereGeometry args={[ATMOSPHERE_RADIUS, 64, 64]} />
-      <meshBasicMaterial color="#4fb6ff" transparent opacity={0.18} side={THREE.BackSide} />
+    <mesh geometry={geometry}>
+      <meshBasicMaterial 
+        color="#4fb6ff" 
+        transparent 
+        opacity={0.18} 
+        side={THREE.BackSide}
+        depthWrite={false}
+      />
     </mesh>
   )
 }
@@ -111,10 +138,14 @@ function EarthController({ earthRef }) {
     if (!earthRef.current) return
 
     if (aligning.current) {
+      // Faster, smoother rotation animation
+      const rotationSpeed = Math.min(delta * 2.5, 0.1) // Adaptive speed with cap
       tempQuaternion.current.copy(earthRef.current.quaternion)
-      tempQuaternion.current.slerp(rotationTarget.current, 1 - Math.pow(0.0001, delta))
+      tempQuaternion.current.slerp(rotationTarget.current, rotationSpeed)
       earthRef.current.quaternion.copy(tempQuaternion.current)
-      if (earthRef.current.quaternion.angleTo(rotationTarget.current) < 0.01) {
+      
+      // Check if rotation is close enough to target
+      if (earthRef.current.quaternion.angleTo(rotationTarget.current) < 0.05) {
         earthRef.current.quaternion.copy(rotationTarget.current)
         aligning.current = false
         confirmAlignment()
@@ -123,8 +154,10 @@ function EarthController({ earthRef }) {
       earthRef.current.rotation.y += delta * 0.12
       earthRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.07) * 0.08
     } else if (phase === PHASES.RESETTING) {
+      // Faster reset animation
+      const resetSpeed = Math.min(delta * 3.0, 0.15)
       tempQuaternion.current.copy(earthRef.current.quaternion)
-      tempQuaternion.current.slerp(identityQuaternion.current, 1 - Math.pow(0.0001, delta))
+      tempQuaternion.current.slerp(identityQuaternion.current, resetSpeed)
       earthRef.current.quaternion.copy(tempQuaternion.current)
     }
   })
@@ -164,24 +197,35 @@ function CameraRig() {
     }
 
     if (phase === PHASES.TRANSITION_TO_SURFACE && activeLocation) {
-      camera.position.lerp(targetCameraPosition.current, 1 - Math.pow(0.0001, delta))
+      // Smoother, faster camera transition with easing
+      const transitionSpeed = Math.min(delta * 4.0, 0.2) // Much faster transition
+      camera.position.lerp(targetCameraPosition.current, transitionSpeed)
+      
+      // Smooth lookAt transition
       const focusPoint = latLonToCartesian(activeLocation.latitude, activeLocation.longitude, EARTH_RADIUS * 0.9)
       camera.lookAt(focusPoint.x, focusPoint.y, focusPoint.z)
 
-      if (camera.position.distanceTo(targetCameraPosition.current) < 0.02) {
+      // More generous completion threshold
+      if (camera.position.distanceTo(targetCameraPosition.current) < 0.1) {
         enterSurfaceView()
       }
     } else if (phase === PHASES.SPACE_IDLE || phase === PHASES.ALIGNING) {
-      camera.position.lerp(defaultPosition, Math.min(1, delta * 0.8))
+      // Consistent speed for return to default position
+      const returnSpeed = Math.min(delta * 2.0, 0.1)
+      camera.position.lerp(defaultPosition, returnSpeed)
       camera.lookAt(lookAtOrigin)
     } else if (phase === PHASES.RESETTING) {
-      camera.position.lerp(defaultPosition, Math.min(1, delta * 0.6))
+      // Fast reset animation
+      const resetSpeed = Math.min(delta * 3.0, 0.15)
+      camera.position.lerp(defaultPosition, resetSpeed)
       camera.lookAt(lookAtOrigin)
-      if (camera.position.distanceTo(defaultPosition) < 0.03) {
+      if (camera.position.distanceTo(defaultPosition) < 0.1) {
         completeReset()
       }
     } else if (!targetLocation && phase !== PHASES.TRANSITION_TO_SURFACE) {
-      camera.position.lerp(defaultPosition, Math.min(1, delta * 0.5))
+      // Fallback smooth return
+      const fallbackSpeed = Math.min(delta * 1.5, 0.08)
+      camera.position.lerp(defaultPosition, fallbackSpeed)
       camera.lookAt(lookAtOrigin)
     }
   })
@@ -206,6 +250,10 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
   const surfaceVector = useRef(new THREE.Vector3())
   const cameraVector = useRef(new THREE.Vector3())
 
+  // Memoize geometries to prevent recreation
+  const sphereGeometry = useMemo(() => new THREE.SphereGeometry(0.02, 8, 8), [])
+  const ringGeometry = useMemo(() => new THREE.RingGeometry(0.03, 0.055, 16), [])
+
   useEffect(() => {
     if (!groupRef.current) return
     const outward = positionVector.clone().normalize()
@@ -213,12 +261,17 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
     groupRef.current.quaternion.copy(quaternion)
   }, [positionVector])
 
+  // Smooth time-based animations instead of frame-based throttling
   useFrame((state) => {
     if (haloRef.current) {
       haloRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.05)
     }
 
-    if (groupRef.current) {
+    // Time-based visibility checks (every 100ms) for smoother animation
+    const currentTime = state.clock.elapsedTime
+    const shouldCheckVisibility = Math.floor(currentTime * 10) !== Math.floor((currentTime - state.clock.getDelta()) * 10)
+    
+    if (shouldCheckVisibility && groupRef.current) {
       cameraVector.current.copy(camera.position).normalize()
       groupRef.current.getWorldPosition(surfaceVector.current)
       surfaceVector.current.normalize()
@@ -229,26 +282,31 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
       }
     }
 
+    // Smooth label transitions using CSS instead of frequent DOM updates
     if (labelRef.current) {
-      labelRef.current.style.opacity = isVisible ? '1' : '0'
-      labelRef.current.style.transform = isVisible ? 'scale(1)' : 'scale(0.95)'
-      labelRef.current.style.pointerEvents = isVisible ? 'auto' : 'none'
+      const targetOpacity = isVisible ? '1' : '0'
+      const targetScale = isVisible ? 'scale(1)' : 'scale(0.95)'
+      
+      if (labelRef.current.style.opacity !== targetOpacity) {
+        labelRef.current.style.opacity = targetOpacity
+        labelRef.current.style.transform = targetScale
+        labelRef.current.style.pointerEvents = isVisible ? 'auto' : 'none'
+      }
     }
   })
 
   return (
     <group ref={groupRef} position={positionVector}>
-      <mesh>
-        <sphereGeometry args={[0.02, 16, 16]} />
+      <mesh geometry={sphereGeometry}>
         <meshStandardMaterial color={isActive ? '#ff7a45' : isTarget ? '#4f9cff' : '#f5f5f5'} emissive="#2c3f6c" emissiveIntensity={0.5} />
       </mesh>
-      <mesh ref={haloRef}>
-        <ringGeometry args={[0.03, 0.055, 32]} />
+      <mesh ref={haloRef} geometry={ringGeometry}>
         <meshBasicMaterial
           color={isActive ? '#ffb26f' : '#4f9cff'}
           transparent
           opacity={isActive ? 0.75 : 0.45}
           side={THREE.DoubleSide}
+          depthWrite={false}
         />
       </mesh>
       <Line
@@ -262,7 +320,11 @@ function LocationMarker({ location, isActive, isTarget, onSelect }) {
       <Html
         position={[0, 0, radialLabelDistance]}
         distanceFactor={8}
-        style={{ pointerEvents: 'auto', transition: 'opacity 0.3s ease, transform 0.3s ease' }}
+        style={{ 
+          pointerEvents: 'auto', 
+          transition: 'opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+          willChange: 'opacity, transform'
+        }}
         ref={labelRef}
       >
         <button
@@ -381,7 +443,20 @@ function SpaceScene({ onLocationSelect }) {
 
   return (
     <div className="relative w-full h-full">
-      <Canvas shadows camera={{ position: [0, 1.8, 5.2], fov: 45 }}>
+      <Canvas 
+        shadows 
+        camera={{ position: [0, 1.8, 5.2], fov: 45 }}
+        gl={{ 
+          antialias: true,   // Enable antialiasing for smoother animations
+          alpha: false,      // Disable alpha channel
+          powerPreference: "high-performance",
+          pixelRatio: Math.min(window.devicePixelRatio, 2), // Limit pixel ratio
+          preserveDrawingBuffer: false, // Better performance during animations
+          failIfMajorPerformanceCaveat: false
+        }}
+        performance={{ min: 0.5 }} // Higher minimum framerate for smoother animations
+        frameloop="always" // Ensure continuous rendering during animations
+      >
         <color attach="background" args={["#040511"]} />
         <fog attach="fog" args={["#040511", 14, 26]} />
         <Suspense fallback={null}>
